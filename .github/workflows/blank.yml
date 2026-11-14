@@ -1,0 +1,40 @@
+name: Windows RDP
+on:
+  workflow_dispatch:
+    inputs:
+      ngrok_token:
+        description: 'Ngrok AuthToken'
+        required: true
+        type: string
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Download & Extract Ngrok
+        run: |
+          Invoke-WebRequest -Uri "https://equinox.io" -OutFile "ngrok.zip"
+          Expand-Archive -Path "ngrok.zip" -DestinationPath "C:\ngrok" -Force
+
+      - name: Configure RDP & Firewall
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          net user runneradmin Password123!
+
+      - name: Start Tunnel & Print Connection Info
+        run: |
+          C:\ngrok\ngrok.exe config add-authtoken ${{ github.event.inputs.ngrok_token }}
+          Start-Process -FilePath "C:\ngrok\ngrok.exe" -ArgumentList "tcp 3389" -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+          $tunnels = Invoke-RestMethod -Uri "http://localhost:4040/api/tunnels"
+          $public_url = $tunnels.tunnels[0].public_url -replace "tcp://", ""
+          Write-Host "========================================="
+          Write-Host "IP / Address : $public_url"
+          Write-Host "Username     : runneradmin"
+          Write-Host "Password     : Password123!"
+          Write-Host "========================================="
+          Start-Sleep -Seconds 21000
